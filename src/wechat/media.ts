@@ -127,4 +127,41 @@ export class MediaManager {
 
     return response.data.media_id;
   }
+
+  async uploadThumbImageFromUrl(imageUrl: string): Promise<string> {
+    const os = await import('os');
+    const tempDir = path.join(os.tmpdir(), 'md2wechat');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    let ext = path.extname(imageUrl.split('?')[0]) || '.jpg';
+    if (!['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].includes(ext.toLowerCase())) {
+      ext = '.jpg';
+    }
+    const tempFile = path.join(tempDir, `thumb_${Date.now()}${ext}`);
+
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: 'stream',
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+      const writer = fs.createWriteStream(tempFile);
+      response.data.pipe(writer);
+
+      await new Promise<void>((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+      return await this.uploadThumbImage(tempFile);
+    } finally {
+      if (fs.existsSync(tempFile)) {
+        fs.unlinkSync(tempFile);
+      }
+    }
+  }
 }

@@ -38,11 +38,12 @@ md2wechat 就是为解决这些问题而生的。你只需要专注写作（用�
 - ✅ 11 套精心设计的排版主题
 - ✅ 手机端深度适配（代码换行、列表样式、表格滚动）
 - ✅ 本地图片自动上传微信素材库
+- ✅ **智能封面**：支持本地文件/在线URL/自动检测正文第一张图/Front Matter/默认封面
 - ✅ 一键发布到公众号草稿箱
 - ✅ 可视化 Web 界面（在线编辑、实时预览）
 - ✅ 批量发布（目录/多选，进度条，失败重试）
 - ✅ 命令行工具（可集成 CI/CD）
-- ✅ 配置本地存储，隐私安全
+- ✅ 配置本地项目目录存储，隐私安全
 
 ---
 
@@ -130,14 +131,22 @@ function hello() {
 
 - 扫描 HTML 中所有 `<img>` 标签
 - 本地图片（非 http/https/data: 开头）通过微信 `material/add_material` 接口上传为永久素材
+- 网络图片（http/https 开头）支持直接通过URL下载后上传（封面图）
 - 上传成功后获取微信 CDN URL（`https://mmbiz.qpic.cn/...`）
 - 替换 HTML 中所有本地路径为微信 URL
 
 #### 步骤 5：封面上传与草稿创建（draft.ts）
 
-- 封面图片通过 `media/uploadimg` 接口上传，获取 `thumb_media_id`
-- 如果没有指定封面，自动使用 `cover/cover.jpeg` 作为默认封面
-- 调用 `/draft/add` 接口创建草稿，传入 articles 数组包含 title/author/digest/content/thumb_media_id
+封面按以下优先级自动选择：
+1. 用户手动选择的本地文件
+2. 用户手动输入的URL封面
+3. Front Matter 中的 `cover` 字段（支持本地路径和在线URL）
+4. **自动检测正文第一张图片**（支持本地和网络图片）
+5. 项目默认封面 `cover/cover.jpeg` 作为兜底
+
+封面图片（thumb类型）通过 `material/add_material?type=thumb` 接口上传，获取 `thumb_media_id`。网络URL封面会先下载到临时目录，上传后自动清理。
+
+最后调用 `/draft/add` 接口创建草稿，传入 articles 数组包含 title/author/digest/content/thumb_media_id。
 
 ### 2.3 为什么代码块用 `<section>` 而不是 `<span>`？
 
@@ -152,9 +161,9 @@ function hello() {
 
 ### 2.4 配置存储
 
-配置文件保存在用户主目录下：
-- Windows: `C:\Users\用户名\.md2wechat\config.json`
-- macOS/Linux: `~/.md2wechat/config.json`
+配置文件保存在项目根目录下的 `.md2wechat/` 文件夹中：
+- **配置文件路径**：`<项目目录>/.md2wechat/config.json`
+- 该目录已加入 `.gitignore`，不会被提交到代码仓库
 
 内容示例：
 ```json
@@ -168,6 +177,8 @@ function hello() {
 ```
 
 AppSecret 以明文存储（本地工具，无服务端传输），请妥善保管本地配置文件。
+
+> 💡 **兼容旧版本**：如果检测到用户主目录下（`~/.md2wechat/config.json`）有旧配置，会自动迁移到项目目录下。
 
 ---
 
@@ -266,8 +277,11 @@ npm run dev -- web
 1. **写内容**：在编辑区直接输入 Markdown，或点击"📎 点击选择 .md 文件"导入本地文件
 2. **填信息**：在左侧栏填写标题、作者、摘要（留空则取 frontmatter 或一级标题）
 3. **选主题**：在"🎨 主题选择"下拉框选择喜欢的主题
-4. **选封面**：点击"🖼️ 点击选择封面图"上传封面（不选则使用默认封面）
-5. **预览**：切换到"👁️预览"或"📑分屏"查看效果
+4. **选封面**（三种方式，任选其一或留空自动检测）：
+   - 点击"🖼️ 点击选择封面图"上传本地图片
+   - 在"或粘贴图片URL"输入框粘贴网络图片链接
+   - 勾选"无封面时自动使用正文第一张图片"（默认开启），无需手动设置
+5. **预览**：切换到"👁️预览"或"📑分屏"查看效果，封面预览区会显示当前选中的封面及来源
 6. **发布**：点击右上角"🚀 发布草稿"，等待提示成功
 7. **去公众平台**：登录微信公众平台 → 草稿箱，即可看到文章，可编辑或群发
 
@@ -393,9 +407,9 @@ cover: ./images/cover.jpg
 | `author` | 作者名 | `author: 技术小编` |
 | `digest` | 文章摘要（120字以内最佳） | `digest: 一篇入门指南` |
 | `theme` | 主题ID | `theme: github` |
-| `cover` | 封面图片相对路径 | `cover: ./cover.jpg` |
+| `cover` | 封面图片路径或URL | `cover: ./cover.jpg` 或 `cover: https://example.com/cover.jpg` |
 
-> **注意**：批量发布时，frontmatter 中的 `cover` 本地路径会被忽略（浏览器安全限制无法访问本地路径），统一使用用户在界面中选择的封面或默认封面。
+> **封面选择优先级**（高→低）：手动选择本地文件 > 手动输入URL > Front Matter cover字段 > 自动检测正文第一张图 > 项目默认封面。批量发布时本地路径封面可正常使用（后端读取文件），会自动标记为"文章"来源。
 
 ---
 
@@ -416,7 +430,13 @@ cover: ./images/cover.jpg
 4. 设置顶部的"默认作者"和"默认主题"
 5. 检查每个文件卡片：
    - 可单独修改标题、作者、主题
-   - 点击封面缩略图旁的按钮可单独选择封面（不选则使用默认封面）
+   - 封面缩略图显示当前封面来源标签：
+     - 🔵 **自动**：检测到正文第一张图片（本地或URL），将自动使用
+     - 🟣 **文章**：Front Matter 中指定的封面
+     - 🟢 **本地**：手动选择的本地文件
+     - 🟠 **URL**：手动输入的网络图片URL
+     - ⚪ **默认**：未检测到图片，使用项目默认封面
+   - 点击封面缩略图可选择本地文件，在"封面URL"输入框可粘贴网络图片链接
    - 点击右上角 X 可从列表中移除该文件
 6. 点击"🚀 开始批量发布"
 7. 观察进度条：
@@ -552,5 +572,7 @@ CSS 必须以 `.wechat-article` 作为根选择器，所有元素样式都在其
 ### 10.5 重置配置
 
 如需重新配置，删除配置文件即可：
-- Windows: `del %USERPROFILE%\.md2wechat\config.json`
-- macOS/Linux: `rm ~/.md2wechat/config.json`
+- 直接在项目目录下删除 `.md2wechat/config.json` 文件夹
+- 或在命令行执行：
+  - Windows: `rmdir /s /q .md2wechat`（在项目根目录下）
+  - macOS/Linux: `rm -rf .md2wechat/`（在项目根目录下）

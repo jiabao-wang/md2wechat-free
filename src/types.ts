@@ -21,6 +21,7 @@ export interface ParsedArticle {
   meta: ArticleMeta;
   content: string;
   images: ImageRef[];
+  firstImage?: ImageRef;
 }
 
 export interface ImageRef {

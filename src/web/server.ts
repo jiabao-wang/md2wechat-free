@@ -87,12 +87,19 @@ app.post('/api/preview', (req: Request, res: Response) => {
       selectedTheme.css,
       parsed.meta.title
     );
+    const firstImg = parsed.firstImage;
     res.json({
       success: true,
       data: {
         html: rendered.html,
         previewHtml,
         meta: rendered.meta,
+        firstImage: firstImg ? {
+          original: firstImg.originalUrl,
+          isLocal: !!firstImg.localPath,
+          localPath: firstImg.localPath,
+          isUrl: /^https?:\/\//.test(firstImg.originalUrl),
+        } : null,
         images: rendered.images.map(img => ({
           original: img.originalUrl,
           isLocal: !!img.localPath,
@@ -110,13 +117,20 @@ app.post('/api/upload/markdown', upload.single('file'), (req: Request, res: Resp
       return res.json({ success: false, error: 'No file uploaded' });
     }
     const content = fs.readFileSync(req.file.path, 'utf-8');
-    const parsed = parseMarkdown(content);
+    const parsed = parseMarkdown(content, path.dirname(req.file.path));
+    const firstImg = parsed.firstImage;
     res.json({
       success: true,
       data: {
         filename: req.file.originalname,
         content,
         meta: parsed.meta,
+        firstImage: firstImg ? {
+          original: firstImg.originalUrl,
+          isLocal: !!firstImg.localPath,
+          localPath: firstImg.localPath,
+          isUrl: /^https?:\/\//.test(firstImg.originalUrl),
+        } : null,
       }
     });
     fs.unlinkSync(req.file.path);
@@ -156,7 +170,7 @@ app.post('/api/publish', upload.fields([
   { name: 'cover', maxCount: 1 }
 ]), async (req: Request, res: Response) => {
   try {
-    const { markdown, theme, title, author, digest } = req.body;
+    const { markdown, theme, title, author, digest, coverUrl, autoCover } = req.body;
     if (!markdown) {
       return res.json({ success: false, error: 'Markdown 内容不能为空' });
     }
@@ -192,10 +206,23 @@ app.post('/api/publish', upload.fields([
       coverPath = files.cover[0].path;
     }
 
+    let autoCoverImage: { localPath?: string; originalUrl: string } | undefined;
+    if (autoCover !== 'false' && autoCover !== false && !coverPath && !coverUrl && !parsed.meta.cover) {
+      const firstImg = parsed.firstImage;
+      if (firstImg) {
+        autoCoverImage = {
+          originalUrl: firstImg.originalUrl,
+          localPath: firstImg.localPath,
+        };
+      }
+    }
+
     const result = await draftManager.createArticleDraft(
       articleContent,
       rendered.meta,
-      coverPath
+      coverPath,
+      coverUrl || undefined,
+      autoCoverImage
     );
 
     if (coverPath && fs.existsSync(coverPath)) {
@@ -207,6 +234,7 @@ app.post('/api/publish', upload.fields([
       data: {
         mediaId: result.media_id,
         title: rendered.meta.title,
+        usedCover: autoCoverImage ? 'auto' : (coverPath ? 'file' : (coverUrl ? 'url' : (parsed.meta.cover ? 'meta' : 'default'))),
       }
     });
   } catch (err: any) {

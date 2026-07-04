@@ -304,7 +304,16 @@
             <div class="file-input-btn" id="coverBtn">🖼️ 点击选择封面图</div>
             <input type="file" accept="image/*" onchange="onCoverSelect(event)">
           </div>
+          <div style="display:flex;align-items:center;gap:6px;margin:6px 0;">
+            <input type="text" id="coverUrlInput" placeholder="或粘贴图片URL" style="flex:1;padding:6px 8px;border:1px solid #d9d9d9;border-radius:4px;font-size:12px;outline:none;" oninput="onCoverUrlInput()">
+            <button class="btn-clear" onclick="clearCoverUrl()" style="padding:4px 8px;font-size:12px;border:1px solid #d9d9d9;background:#fff;border-radius:4px;cursor:pointer;">✕</button>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#666;cursor:pointer;margin-bottom:6px;">
+            <input type="checkbox" id="autoCoverCheck" checked onchange="onAutoCoverChange()">
+            无封面时自动使用正文第一张图片
+          </label>
           <img class="cover-preview" id="coverPreview">
+          <div id="coverHint" style="font-size:11px;color:#999;margin-top:4px;">未设置封面时，将自动使用默认封面</div>
         </div>
       </div>
       <div class="sidebar-section">
@@ -450,6 +459,90 @@
   <script>
     var currentThemes = [];
     var coverFile = null;
+    var coverUrlValue = '';
+    var autoDetectedCover = null;
+
+    function onCoverSelect(event) {
+      var file = event.target.files[0];
+      if (!file) return;
+      coverFile = file;
+      coverUrlValue = '';
+      document.getElementById('coverUrlInput').value = '';
+      document.getElementById('coverBtn').textContent = '🖼️ ' + file.name;
+      document.getElementById('coverBtn').classList.add('has-file');
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = document.getElementById('coverPreview');
+        img.src = e.target.result;
+        img.classList.add('show');
+        updateCoverHint('file');
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';
+    }
+
+    function onCoverUrlInput() {
+      var val = document.getElementById('coverUrlInput').value.trim();
+      coverUrlValue = val;
+      if (val) {
+        coverFile = null;
+        document.getElementById('coverBtn').textContent = '🖼️ 点击选择封面图';
+        document.getElementById('coverBtn').classList.remove('has-file');
+        var img = document.getElementById('coverPreview');
+        img.src = val;
+        img.classList.add('show');
+        updateCoverHint('url');
+      } else {
+        resetCoverPreview();
+      }
+    }
+
+    function clearCoverUrl() {
+      document.getElementById('coverUrlInput').value = '';
+      coverUrlValue = '';
+      if (!coverFile) resetCoverPreview();
+    }
+
+    function onAutoCoverChange() {
+      updateCoverPreview();
+    }
+
+    function resetCoverPreview() {
+      coverFile = null;
+      coverUrlValue = '';
+      autoDetectedCover = null;
+      document.getElementById('coverBtn').textContent = '🖼️ 点击选择封面图';
+      document.getElementById('coverBtn').classList.remove('has-file');
+      document.getElementById('coverPreview').classList.remove('show');
+      updateCoverHint('none');
+    }
+
+    function updateCoverHint(kind) {
+      var hint = document.getElementById('coverHint');
+      if (kind === 'file') hint.textContent = '封面来源：本地文件';
+      else if (kind === 'url') hint.textContent = '封面来源：网络URL';
+      else if (kind === 'auto') hint.textContent = '封面来源：自动检测正文第一张图片';
+      else if (kind === 'meta') hint.textContent = '封面来源：Markdown front matter';
+      else hint.textContent = '未设置封面时，将自动使用默认封面';
+    }
+
+    function updateCoverPreview() {
+      if (coverFile || coverUrlValue) return;
+      var autoCheck = document.getElementById('autoCoverCheck');
+      if (autoCheck && autoCheck.checked && autoDetectedCover) {
+        var img = document.getElementById('coverPreview');
+        if (autoDetectedCover.isUrl) {
+          img.src = autoDetectedCover.original;
+        } else {
+          img.src = '/api/default-cover';
+        }
+        img.classList.add('show');
+        updateCoverHint('auto');
+      } else {
+        document.getElementById('coverPreview').classList.remove('show');
+        updateCoverHint('none');
+      }
+    }
     var previewTimer = null;
     var currentTab = 'editor';
     var defaultMd = `---
@@ -666,6 +759,12 @@ function deployStack() {
         if (data.success) {
           document.getElementById('previewContent').innerHTML = data.data.html;
           document.getElementById('previewContent2').innerHTML = data.data.html;
+          autoDetectedCover = data.data.firstImage || null;
+          if (data.data.meta && data.data.meta.cover) {
+            autoDetectedCover = { original: data.data.meta.cover, isUrl: /^https?:\/\//.test(data.data.meta.cover) };
+            if (!coverFile && !coverUrlValue) updateCoverHint('meta');
+          }
+          if (!coverFile && !coverUrlValue) updateCoverPreview();
         }
       }).catch(function() {});
     }
@@ -692,26 +791,17 @@ function deployStack() {
               document.getElementById('themeSelect').value = data.data.meta.theme;
               updateThemeTag();
             }
+            autoDetectedCover = data.data.firstImage || null;
+            if (data.data.meta && data.data.meta.cover) {
+              autoDetectedCover = { original: data.data.meta.cover, isUrl: /^https?:\/\//.test(data.data.meta.cover) };
+            }
+            resetCoverPreview();
+            coverFile = null;
+            coverUrlValue = '';
             refreshPreview();
             showToast('文件导入成功！', 'success');
           } else { showToast(data.error || '导入失败', 'error'); }
         }).catch(function(e) { hideLoading(); showToast(e.message, 'error'); });
-      event.target.value = '';
-    }
-
-    function onCoverSelect(event) {
-      var file = event.target.files[0];
-      if (!file) return;
-      coverFile = file;
-      document.getElementById('coverBtn').textContent = '🖼️ ' + file.name;
-      document.getElementById('coverBtn').classList.add('has-file');
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        var img = document.getElementById('coverPreview');
-        img.src = e.target.result;
-        img.classList.add('show');
-      };
-      reader.readAsDataURL(file);
       event.target.value = '';
     }
 
@@ -746,13 +836,19 @@ function deployStack() {
       fd.append('author', document.getElementById('articleAuthor').value);
       fd.append('digest', document.getElementById('articleDigest').value);
       if (coverFile) fd.append('cover', coverFile);
+      if (coverUrlValue) fd.append('coverUrl', coverUrlValue);
+      var autoCheck = document.getElementById('autoCoverCheck');
+      fd.append('autoCover', autoCheck && autoCheck.checked ? 'true' : 'false');
       showLoading('正在发布到草稿箱...');
       fetch('/api/publish', { method: 'POST', body: fd })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           hideLoading();
           if (data.success) {
-            showToast('🎉 草稿发布成功！请登录微信公众平台查看', 'success');
+            var coverTip = '';
+            if (data.data && data.data.usedCover === 'auto') coverTip = '（已自动使用正文第一张图为封面）';
+            else if (data.data && data.data.usedCover === 'default') coverTip = '（使用默认封面）';
+            showToast('🎉 草稿发布成功！' + coverTip + ' 请登录微信公众平台查看', 'success');
           } else { showToast('发布失败：' + (data.error || '未知错误'), 'error'); }
         }).catch(function(e) { hideLoading(); showToast(e.message, 'error'); });
     }
@@ -807,6 +903,15 @@ function deployStack() {
       });
     }
 
+    function extractFirstImageFromMd(mdText) {
+      var content = mdText.replace(/^---\n[\s\S]*?\n---/, '');
+      var match = content.match(/!\[.*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+      if (match) return match[1];
+      var htmlMatch = content.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (htmlMatch) return htmlMatch[1];
+      return null;
+    }
+
     function addBatchFiles(files) {
       var mdFiles = filterMdFiles(files);
       if (mdFiles.length === 0) {
@@ -826,7 +931,10 @@ function deployStack() {
           digest: '',
           content: '',
           coverFile: null,
+          coverUrl: '',
+          autoCoverUrl: '',
           coverPreview: '/api/default-cover',
+          coverSource: 'default',
           status: 'pending',
           error: ''
         };
@@ -843,6 +951,26 @@ function deployStack() {
             if (meta.theme) {
               var themeExists = currentThemes.some(function(t) { return t.id === meta.theme; });
               if (themeExists) item.theme = meta.theme;
+            }
+            if (meta.cover) {
+              if (/^https?:\/\//.test(meta.cover)) {
+                item.autoCoverUrl = meta.cover;
+                item.coverPreview = meta.cover;
+                item.coverSource = 'meta-url';
+              } else {
+                item.coverSource = 'meta-local';
+              }
+            } else {
+              var firstImg = extractFirstImageFromMd(text);
+              if (firstImg) {
+                if (/^https?:\/\//.test(firstImg)) {
+                  item.autoCoverUrl = firstImg;
+                  item.coverPreview = firstImg;
+                }
+                item.coverSource = 'auto';
+              } else {
+                item.coverSource = 'default';
+              }
             }
             renderBatchFileList();
           };
@@ -888,6 +1016,8 @@ function deployStack() {
       var item = batchFiles.find(function(f) { return f.id === id; });
       if (!item) return;
       item.coverFile = file;
+      item.coverUrl = '';
+      item.coverSource = 'file';
       var reader = new FileReader();
       reader.onload = function(e) {
         item.coverPreview = e.target.result;
@@ -895,6 +1025,37 @@ function deployStack() {
       };
       reader.readAsDataURL(file);
       event.target.value = '';
+    }
+
+    function onBatchItemCoverUrl(id, value) {
+      var item = batchFiles.find(function(f) { return f.id === id; });
+      if (!item) return;
+      var url = value.trim();
+      item.coverUrl = url;
+      if (url) {
+        item.coverFile = null;
+        item.coverPreview = url;
+        item.coverSource = 'url';
+      } else {
+        if (item.autoCoverUrl) {
+          item.coverPreview = item.autoCoverUrl;
+          item.coverSource = 'auto';
+        } else {
+          var firstImg = extractFirstImageFromMd(item.content || '');
+          if (firstImg && /^https?:\/\//.test(firstImg)) {
+            item.autoCoverUrl = firstImg;
+            item.coverPreview = firstImg;
+            item.coverSource = 'auto';
+          } else if (firstImg) {
+            item.coverPreview = '/api/default-cover';
+            item.coverSource = 'auto';
+          } else {
+            item.coverPreview = '/api/default-cover';
+            item.coverSource = 'default';
+          }
+        }
+      }
+      renderBatchFileList();
     }
 
     function updateBatchItemField(id, field, value) {
@@ -940,11 +1101,20 @@ function deployStack() {
             break;
         }
         var errorMsg = item.error ? '<div style="font-size:11px;color:#ff4d4f;margin-top:4px;">' + item.error + '</div>' : '';
+        var coverLabel = '';
+        if (item.coverSource === 'auto') coverLabel = '<span style="font-size:10px;color:#1890ff;background:#e6f7ff;padding:1px 4px;border-radius:3px;">自动</span>';
+        else if (item.coverSource === 'meta-url' || item.coverSource === 'meta-local') coverLabel = '<span style="font-size:10px;color:#722ed1;background:#f9f0ff;padding:1px 4px;border-radius:3px;">文章</span>';
+        else if (item.coverSource === 'file') coverLabel = '<span style="font-size:10px;color:#52c41a;background:#f6ffed;padding:1px 4px;border-radius:3px;">本地</span>';
+        else if (item.coverSource === 'url') coverLabel = '<span style="font-size:10px;color:#fa8c16;background:#fff7e6;padding:1px 4px;border-radius:3px;">URL</span>';
+        else coverLabel = '<span style="font-size:10px;color:#999;background:#f5f5f5;padding:1px 4px;border-radius:3px;">默认</span>';
         html += '<div class="batch-file-card" data-id="' + item.id + '">' +
-          '<label style="cursor:pointer;position:relative;">' +
-            '<img class="batch-file-cover" src="' + item.coverPreview + '" alt="封面">' +
-            '<input type="file" accept="image/*" onchange="onBatchItemCoverSelect(event,\'' + item.id + '\')" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;cursor:pointer;">' +
-          '</label>' +
+          '<div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+            '<label style="cursor:pointer;position:relative;">' +
+              '<img class="batch-file-cover" src="' + item.coverPreview + '" alt="封面" onerror="this.src=\'/api/default-cover\'">' +
+              '<input type="file" accept="image/*" onchange="onBatchItemCoverSelect(event,\'' + item.id + '\')" style="position:absolute;left:0;top:0;width:100%;height:100%;opacity:0;cursor:pointer;">' +
+            '</label>' +
+            coverLabel +
+          '</div>' +
           '<div class="batch-file-info">' +
             '<div class="batch-file-name">' + item.file.name + '</div>' +
             '<div class="batch-file-fields">' +
@@ -955,6 +1125,10 @@ function deployStack() {
               '<div class="form-group">' +
                 '<label>作者</label>' +
                 '<input type="text" value="' + (item.author || '').replace(/"/g, '&quot;') + '" placeholder="' + globalAuthor + '" onchange="updateBatchItemField(\'' + item.id + '\',\'author\',this.value)"' + (isBatchPublishing ? ' disabled' : '') + '>' +
+              '</div>' +
+              '<div class="form-group">' +
+                '<label>封面URL（可选）</label>' +
+                '<input type="text" value="' + (item.coverUrl || '').replace(/"/g, '&quot;') + '" placeholder="粘贴图片URL作为封面" oninput="onBatchItemCoverUrl(\'' + item.id + '\',this.value)"' + (isBatchPublishing ? ' disabled' : '') + ' style="font-size:12px;padding:4px 6px;">' +
               '</div>' +
               '<div class="form-group">' +
                 '<label>主题</label>' +
@@ -1021,8 +1195,11 @@ function deployStack() {
         fd.append('title', item.title || '');
         fd.append('author', item.author || document.getElementById('batchGlobalAuthor').value || '');
         fd.append('digest', item.digest || '');
+        fd.append('autoCover', 'true');
         if (item.coverFile) {
           fd.append('cover', item.coverFile);
+        } else if (item.coverUrl) {
+          fd.append('coverUrl', item.coverUrl);
         }
         fetch('/api/publish', { method: 'POST', body: fd })
           .then(function(r) { return r.json(); })
@@ -1050,9 +1227,7 @@ function deployStack() {
         showToast('没有待发布的文件', 'error');
         return;
       }
-      if (!pendingItems.some(function(f) { return f.coverFile; })) {
-        showToast('所有文件将使用默认封面发布', 'success');
-      }
+      showToast('未设置封面的文章将自动使用正文第一张图片或默认封面', 'success');
       isBatchPublishing = true;
       hideBatchSummary();
       showBatchProgress();

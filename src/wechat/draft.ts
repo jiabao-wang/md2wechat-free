@@ -42,23 +42,43 @@ export class DraftManager {
   async createArticleDraft(
     htmlContent: string,
     meta: ArticleMeta,
-    coverPath?: string
+    coverPath?: string,
+    coverUrl?: string,
+    autoCoverImage?: { localPath?: string; originalUrl: string }
   ): Promise<{ media_id: string }> {
     let thumbMediaId = '';
-    let resolvedCoverPath = coverPath;
 
-    if (resolvedCoverPath && !path.isAbsolute(resolvedCoverPath)) {
-      resolvedCoverPath = path.resolve(process.cwd(), resolvedCoverPath);
+    const resolveLocalCover = (p: string): string => {
+      return path.isAbsolute(p) ? p : path.resolve(process.cwd(), p);
+    };
+
+    if (coverPath) {
+      const resolved = resolveLocalCover(coverPath);
+      if (fs.existsSync(resolved)) {
+        thumbMediaId = await this.media.uploadThumbImage(resolved);
+      } else {
+        throw new Error(`封面文件不存在: ${resolved}`);
+      }
+    } else if (coverUrl && /^https?:\/\//.test(coverUrl)) {
+      thumbMediaId = await this.media.uploadThumbImageFromUrl(coverUrl);
+    } else if (meta.cover) {
+      if (/^https?:\/\//.test(meta.cover)) {
+        thumbMediaId = await this.media.uploadThumbImageFromUrl(meta.cover);
+      } else {
+        const metaCoverPath = resolveLocalCover(meta.cover);
+        if (fs.existsSync(metaCoverPath)) {
+          thumbMediaId = await this.media.uploadThumbImage(metaCoverPath);
+        }
+      }
+    } else if (autoCoverImage) {
+      if (autoCoverImage.localPath && fs.existsSync(autoCoverImage.localPath)) {
+        thumbMediaId = await this.media.uploadThumbImage(autoCoverImage.localPath);
+      } else if (/^https?:\/\//.test(autoCoverImage.originalUrl)) {
+        thumbMediaId = await this.media.uploadThumbImageFromUrl(autoCoverImage.originalUrl);
+      }
     }
 
-    if (resolvedCoverPath) {
-      thumbMediaId = await this.media.uploadThumbImage(resolvedCoverPath);
-    } else if (meta.cover) {
-      const metaCoverPath = path.isAbsolute(meta.cover)
-        ? meta.cover
-        : path.resolve(process.cwd(), meta.cover);
-      thumbMediaId = await this.media.uploadThumbImage(metaCoverPath);
-    } else {
+    if (!thumbMediaId) {
       const defaultCover = path.resolve(__dirname, '..', '..', 'cover', 'cover.jpeg');
       if (fs.existsSync(defaultCover)) {
         thumbMediaId = await this.media.uploadThumbImage(defaultCover);

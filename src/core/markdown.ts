@@ -95,6 +95,7 @@ export function parseMarkdown(content: string, baseDir: string = process.cwd()):
     meta,
     content: htmlContent,
     images,
+    firstImage: images.length > 0 ? images[0] : undefined,
   };
 }
 

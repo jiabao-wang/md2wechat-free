@@ -68,10 +68,26 @@ export class MarkdownToWeChat {
         if (!this.draftManager) {
           return { success: false, error: 'WeChat configuration required for draft creation' };
         }
+        let coverUrl: string | undefined;
+        let autoCoverImage: { localPath?: string; originalUrl: string } | undefined;
+        if (options.cover && /^https?:\/\//.test(options.cover)) {
+          coverUrl = options.cover;
+        }
+        if (!options.cover) {
+          const firstImg = parsed.firstImage;
+          if (firstImg) {
+            autoCoverImage = {
+              originalUrl: firstImg.originalUrl,
+              localPath: firstImg.localPath,
+            };
+          }
+        }
         const result = await this.draftManager.createArticleDraft(
           articleContent,
           rendered.meta,
-          options.cover
+          (options.cover && !coverUrl) ? options.cover : undefined,
+          coverUrl,
+          autoCoverImage
         );
         return {
           success: true,

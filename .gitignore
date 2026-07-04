@@ -30,3 +30,6 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Local config (contains secrets)
+.md2wechat/
