@@ -51,6 +51,7 @@
     "marked-highlight": "^2.1.4",
     "multer": "^2.2.0",
     "open": "^8.4.2",
+    "sharp": "^0.35.3",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   }
