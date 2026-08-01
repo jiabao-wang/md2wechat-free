@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Notion → 微信草稿箱</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f7f6;color:#24302b}
+    header{height:64px;padding:0 28px;background:#fff;border-bottom:1px solid #e5e9e7;display:flex;align-items:center;justify-content:space-between}
+    h1{font-size:20px;margin:0}.muted{color:#7b8782;font-size:13px}button,a.btn{border:0;border-radius:8px;padding:10px 16px;cursor:pointer;text-decoration:none;font-size:14px}
+    .primary{background:#07c160;color:#fff}.secondary{background:#edf2ef;color:#35423c}.danger{color:#d4380d}.layout{display:grid;grid-template-columns:minmax(460px,1fr) minmax(420px,1fr);height:calc(100vh - 64px)}
+    .panel{padding:22px;overflow:auto}.panel:first-child{border-right:1px solid #e0e5e2}.toolbar,.settings{background:#fff;border:1px solid #e3e8e5;border-radius:12px;padding:14px;margin-bottom:14px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}input,select{border:1px solid #d9dfdc;border-radius:7px;padding:9px 10px;min-width:130px}input[type=text],input[type=password]{flex:1}input[type=checkbox]{min-width:0;width:16px;height:16px;padding:0;margin:2px 0;accent-color:#07c160}
+    .settings summary{cursor:pointer;font-weight:600}.settings .row{margin-top:12px}.list{display:flex;flex-direction:column;gap:10px}.card{background:#fff;border:1px solid #e3e8e5;border-radius:11px;padding:13px;display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:start}
+    .card.selected{border-color:#07c160;box-shadow:0 0 0 1px #07c160}.title{font-weight:650;line-height:1.45}.summary{font-size:13px;color:#68736e;margin-top:5px;line-height:1.5}.meta{font-size:12px;color:#909995;margin-top:7px}
+    .badge{display:inline-block;padding:2px 7px;border-radius:10px;background:#f0f3f2;margin-right:5px}.status{font-size:12px;min-width:64px;text-align:right}.preview-shell{background:#fff;border:1px solid #e3e8e5;border-radius:12px;min-height:100%;padding:22px}.preview-head{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #eee;padding-bottom:14px;margin-bottom:18px}
+    #preview{max-width:677px;margin:auto;line-height:1.8}#preview img{max-width:100%;height:auto}#preview table{width:100%;border-collapse:collapse}#preview td,#preview th{border:1px solid #ddd;padding:6px}#preview pre{overflow:auto;background:#f6f8fa;padding:12px;border-radius:8px}
+    .result{display:none;background:#fff;border:1px solid #dfe5e2;border-radius:10px;padding:14px;margin-bottom:14px;line-height:1.6}.result.show{display:block}.result.success{border-color:#95de64;background:#f6ffed}.result.error{border-color:#ffccc7;background:#fff2f0}.result ul{margin:8px 0 0;padding-left:20px}.item-state{font-size:12px;margin-top:5px}.item-state.saving{color:#1677ff}.item-state.saved{color:#389e0d}.item-state.failed{color:#cf1322}.pager{display:flex;align-items:center;justify-content:center;gap:10px;margin:14px 0}.pager button:disabled{opacity:.45;cursor:not-allowed}.empty{text-align:center;color:#8b9691;padding:60px 10px}.toast{position:fixed;right:22px;bottom:22px;background:#25302b;color:#fff;padding:12px 18px;border-radius:9px;display:none;max-width:420px}.toast.show{display:block}.toast.error{background:#b42318}
+    @media(max-width:900px){.layout{display:block;height:auto}.panel:first-child{border-right:0}.panel{min-height:50vh}}
+  </style>
+</head>
+<body>
+  <header><div><h1>Notion → 微信草稿箱</h1><div class="muted">从 Blog Posts 选择文章，预览后加入草稿箱</div></div><a class="btn secondary" href="/">返回 Markdown 编辑器</a></header>
+  <main class="layout">
+    <section class="panel">
+      <details class="settings" id="settings">
+        <summary>Notion 本地配置</summary>
+        <div class="row"><input id="token" type="password" placeholder="Internal Integration Token"><input id="dataSourceId" type="text" placeholder="Data Source ID"><button class="primary" onclick="saveConfig()">保存并连接</button></div>
+        <p class="muted">Token 只保存到本机 .md2wechat/config.json，浏览器读取配置时不会返回明文。</p>
+      </details>
+      <div class="toolbar">
+        <div class="row"><input id="query" type="text" placeholder="按文章名称搜索"><input id="category" type="text" placeholder="类别，如：技术"><select id="status"><option value="">全部状态</option><option>Draft</option><option>Published</option><option>Archived</option></select><button class="secondary" onclick="applyFilters()">搜索</button></div>
+        <div class="row" style="margin-top:12px"><label><input type="checkbox" id="selectAll" onchange="toggleAll(this.checked)"> 全选当前列表</label><span style="flex:1"></span><span class="muted" id="count">已选 0 篇</span><button class="primary" id="saveDraftBtn" onclick="saveSelectedDrafts()">保存到草稿箱</button></div>
+      </div>
+      <div id="saveResult" class="result" role="status" aria-live="polite"></div>
+      <div id="list" class="list"><div class="empty">正在读取配置…</div></div>
+      <div class="pager"><button class="secondary" id="prevPage" onclick="previousPage()">上一页</button><span class="muted" id="pageLabel">第 1 页</span><button class="secondary" id="nextPage" onclick="nextPage()">下一页</button></div>
+    </section>
+    <section class="panel"><div class="preview-shell"><div class="preview-head"><div><strong id="previewTitle">文章预览</strong><div class="muted" id="previewMeta">点击左侧文章查看转换效果</div></div><select id="theme"></select></div><article id="preview"><div class="empty">尚未选择文章</div></article></div></section>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script>
+    var articles=[], selected=new Set(), selectedDetails=new Map(), itemStates=new Map(), currentPageId='', themes=[], pageNumber=1, currentCursor='', nextCursor='', cursorHistory=[];
+    function esc(v){return String(v||'').replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+    function toast(msg,error){var el=document.getElementById('toast');el.textContent=msg;el.className='toast show'+(error?' error':'');setTimeout(function(){el.className='toast'},4000)}
+    async function json(url,options){var r=await fetch(url,options);var data=await r.json();if(!data.success)throw new Error(data.error||'请求失败');return data.data}
+    async function init(){
+      try{var cfg=await json('/api/config');document.getElementById('token').value=cfg.notion.token||'';document.getElementById('dataSourceId').value=cfg.notion.dataSourceId||'';if(!cfg.notion.hasToken)document.getElementById('settings').open=true}catch(e){toast(e.message,true)}
+      try{themes=await json('/api/themes');document.getElementById('theme').innerHTML=themes.map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>'}).join('')}catch(e){}
+      loadArticles();
+    }
+    async function saveConfig(){try{await json('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({notionToken:document.getElementById('token').value,notionDataSourceId:document.getElementById('dataSourceId').value})});toast('Notion 配置已保存');document.getElementById('settings').open=false;loadArticles()}catch(e){toast(e.message,true)}}
+    async function loadArticles(){var list=document.getElementById('list');list.innerHTML='<div class="empty">正在读取 Notion 文章…</div>';try{var q=encodeURIComponent(document.getElementById('query').value);var c=encodeURIComponent(document.getElementById('category').value);var s=encodeURIComponent(document.getElementById('status').value);var cursor=currentCursor?'&cursor='+encodeURIComponent(currentCursor):'';var data=await json('/api/notion/articles?pageSize=10&query='+q+'&category='+c+'&status='+s+cursor);articles=data.articles;nextCursor=data.nextCursor||'';renderList();updatePager()}catch(e){list.innerHTML='<div class="empty danger">'+esc(e.message)+'</div>';updatePager();toast(e.message,true)}}
+    function applyFilters(){pageNumber=1;currentCursor='';nextCursor='';cursorHistory=[];document.getElementById('selectAll').checked=false;loadArticles()}
+    function nextPage(){if(!nextCursor)return;cursorHistory.push(currentCursor);currentCursor=nextCursor;pageNumber++;document.getElementById('selectAll').checked=false;loadArticles()}
+    function previousPage(){if(pageNumber<=1)return;currentCursor=cursorHistory.pop()||'';pageNumber--;document.getElementById('selectAll').checked=false;loadArticles()}
+    function updatePager(){document.getElementById('pageLabel').textContent='第 '+pageNumber+' 页';document.getElementById('prevPage').disabled=pageNumber<=1;document.getElementById('nextPage').disabled=!nextCursor}
+    function renderList(){var list=document.getElementById('list');if(!articles.length){list.innerHTML='<div class="empty">没有匹配的文章</div>';updateCount();return}list.innerHTML=articles.map(function(a){var checked=selected.has(a.pageId),state=itemStates.get(a.pageId),stateHtml='';if(state){var labels={saving:'正在保存…',saved:'已保存到草稿箱',failed:'保存失败：'+state.error};stateHtml='<div class="item-state '+state.status+'">'+esc(labels[state.status])+'</div>'}return '<div class="card'+(checked?' selected':'')+'"><input type="checkbox" '+(checked?'checked':'')+' onchange="selectOne(\''+a.pageId+'\',this.checked)"><div onclick="preview(\''+a.pageId+'\')" style="cursor:pointer"><div class="title">'+esc(a.title)+'</div><div class="summary">'+esc(a.summary)+'</div><div class="meta">'+esc(a.author||'未设置作者')+' · '+esc(a.publishedDate||a.lastEditedTime.slice(0,10))+' · '+(a.category?'<span class="badge">'+esc(a.category)+'</span>':'')+a.tags.slice(0,4).map(function(t){return '<span class="badge">'+esc(t)+'</span>'}).join('')+'</div>'+stateHtml+'</div><div class="status">'+esc(a.status)+'</div></div>'}).join('');updateCount()}
+    function selectOne(id,on){var article=articles.find(function(a){return a.pageId===id});if(on){selected.add(id);if(article)selectedDetails.set(id,article)}else{selected.delete(id);selectedDetails.delete(id)}renderList()}function toggleAll(on){articles.forEach(function(a){if(on){selected.add(a.pageId);selectedDetails.set(a.pageId,a)}else{selected.delete(a.pageId);selectedDetails.delete(a.pageId)}});renderList()}function updateCount(){document.getElementById('count').textContent='已选 '+selected.size+' 篇'}
+    async function preview(id){currentPageId=id;document.getElementById('preview').innerHTML='<div class="empty">正在递归读取文章内容…</div>';try{var data=await json('/api/notion/articles/'+id+'?theme='+encodeURIComponent(document.getElementById('theme').value));document.getElementById('previewTitle').textContent=data.title;document.getElementById('previewMeta').textContent=(data.author||'未设置作者')+(data.unsupportedBlocks.length?' · 未支持：'+data.unsupportedBlocks.join(', '):'');document.getElementById('preview').innerHTML=data.html}catch(e){document.getElementById('preview').innerHTML='<div class="empty danger">'+esc(e.message)+'</div>';toast(e.message,true)}}
+    document.getElementById('theme').addEventListener('change',function(){if(currentPageId)preview(currentPageId)});document.getElementById('query').addEventListener('keydown',function(e){if(e.key==='Enter')applyFilters()});document.getElementById('category').addEventListener('keydown',function(e){if(e.key==='Enter')applyFilters()});document.getElementById('status').addEventListener('change',applyFilters);
+    function showSaveResult(ok,failed){var el=document.getElementById('saveResult'),html='<strong>保存完成：成功 '+ok+' 篇，失败 '+failed.length+' 篇</strong>';if(failed.length)html+='<ul>'+failed.map(function(x){return '<li>'+esc(x)+'</li>'}).join('')+'</ul>';el.innerHTML=html;el.className='result show '+(failed.length?'error':'success');el.scrollIntoView({behavior:'smooth',block:'nearest'})}
+    async function saveSelectedDrafts(){if(!selected.size)return toast('请先选择文章',true);var ids=Array.from(selected),ok=0,failed=[],btn=document.getElementById('saveDraftBtn'),result=document.getElementById('saveResult');result.className='result';result.innerHTML='';btn.disabled=true;for(var i=0;i<ids.length;i++){var a=selectedDetails.get(ids[i]);btn.textContent='正在保存 '+(i+1)+'/'+ids.length;itemStates.set(ids[i],{status:'saving'});renderList();try{await json('/api/notion/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageId:ids[i],theme:document.getElementById('theme').value})});ok++;itemStates.set(ids[i],{status:'saved'})}catch(e){var message=(a?a.title:ids[i])+': '+e.message;failed.push(message);itemStates.set(ids[i],{status:'failed',error:e.message})}renderList()}btn.disabled=false;btn.textContent='保存到草稿箱';showSaveResult(ok,failed);toast(failed.length?'部分文章保存失败':'已成功保存到微信公众号草稿箱',failed.length>0)}
+    init();
+  </script>
+</body>
+</html>

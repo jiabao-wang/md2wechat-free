@@ -11,6 +11,7 @@ import { renderArticle, replaceImageUrls, generatePreviewHtml, prepareForWeChat 
 import { getThemes } from '../core/themes';
 import { WeChatClient } from '../wechat/client';
 import { DraftManager } from '../wechat/draft';
+import { NotionClient } from '../notion/client';
 
 const app = express();
 
@@ -30,7 +31,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('Cross-origin access is not allowed'));
+  },
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -43,13 +51,19 @@ app.get('/api/config', (_req: Request, res: Response) => {
       appSecret: config.wechat.appSecret ? '********' : '',
       hasSecret: !!config.wechat.appSecret,
       theme: config.theme,
+      notion: {
+        dataSourceId: config.notion?.dataSourceId || '',
+        databaseId: config.notion?.databaseId || '',
+        hasToken: !!config.notion?.token,
+        token: config.notion?.token ? '********' : '',
+      },
     }
   });
 });
 
 app.post('/api/config', (req: Request, res: Response) => {
   try {
-    const { appId, appSecret, theme } = req.body;
+    const { appId, appSecret, theme, notionToken, notionDataSourceId, notionDatabaseId } = req.body;
     const current = loadConfig();
     const updates: any = {};
     if (appId !== undefined || appSecret !== undefined) {
@@ -59,6 +73,13 @@ app.post('/api/config', (req: Request, res: Response) => {
       };
     }
     if (theme) updates.theme = theme;
+    if (notionToken !== undefined || notionDataSourceId !== undefined || notionDatabaseId !== undefined) {
+      updates.notion = {
+        token: (notionToken && notionToken !== '********') ? notionToken : (current.notion?.token || ''),
+        dataSourceId: notionDataSourceId ?? current.notion?.dataSourceId ?? '',
+        databaseId: notionDatabaseId ?? current.notion?.databaseId ?? '',
+      };
+    }
     saveConfig(updates);
     res.json({ success: true });
   } catch (err: any) {
@@ -70,6 +91,72 @@ app.get('/api/themes', (_req: Request, res: Response) => {
   const themes = getThemes().map(t => ({ id: t.id, name: t.name }));
   res.json({ success: true, data: themes });
 });
+
+function notionFromConfig(): NotionClient {
+  const config = loadConfig();
+  if (!config.notion?.token || !config.notion?.dataSourceId) {
+    throw new Error('请先配置 Notion Integration Token 和 Data Source ID');
+  }
+  return new NotionClient(config.notion);
+}
+
+app.get('/api/notion/articles', async (req: Request, res: Response) => {
+  try {
+    const data = await notionFromConfig().listArticles({
+      query: String(req.query.query || ''),
+      category: String(req.query.category || ''),
+      status: String(req.query.status || ''),
+      cursor: String(req.query.cursor || ''),
+      pageSize: Number(req.query.pageSize || 10),
+    });
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/notion/articles/:pageId', async (req: Request, res: Response) => {
+  try {
+    const article = await notionFromConfig().getArticle(String(req.params.pageId));
+    const config = loadConfig();
+    const parsed = parseMarkdown(article.markdown);
+    parsed.meta.title = article.title;
+    parsed.meta.author = article.author;
+    parsed.meta.digest = article.summary;
+    const rendered = renderArticle(parsed, String(req.query.theme || config.theme || 'default'));
+    res.json({ success: true, data: { ...article, html: rendered.html } });
+  } catch (err: any) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+async function saveNotionDraft(req: Request, res: Response) {
+  try {
+    const { pageId, theme, title, author, digest, coverUrl } = req.body;
+    if (!pageId) return res.json({ success: false, error: 'pageId 不能为空' });
+    const config = loadConfig();
+    if (!config.wechat.appId || !config.wechat.appSecret) {
+      return res.json({ success: false, error: '请先配置微信公众号 AppID 和 AppSecret' });
+    }
+    const article = await notionFromConfig().getArticle(String(pageId));
+    const parsed = parseMarkdown(article.markdown);
+    parsed.meta.title = title || article.title;
+    parsed.meta.author = author || article.author;
+    parsed.meta.digest = digest || article.summary;
+    const rendered = renderArticle(parsed, theme || config.theme || 'default');
+    const draftManager = new DraftManager(new WeChatClient(config.wechat));
+    const urlMap = await draftManager.getMediaManager().uploadArticleImages(rendered.images, { strict: true });
+    const content = prepareForWeChat(replaceImageUrls(rendered.html, urlMap));
+    const selectedCover = coverUrl || article.coverUrl;
+    const autoCover = selectedCover ? undefined : (article.firstImageUrl ? { originalUrl: article.firstImageUrl } : undefined);
+    const result = await draftManager.createArticleDraft(content, rendered.meta, undefined, selectedCover, autoCover);
+    res.json({ success: true, data: { pageId, mediaId: result.media_id, title: rendered.meta.title } });
+  } catch (err: any) {
+    res.json({ success: false, error: err.message });
+  }
+}
+
+app.post('/api/notion/drafts', saveNotionDraft);
 
 app.post('/api/preview', (req: Request, res: Response) => {
   try {
