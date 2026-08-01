@@ -97,6 +97,32 @@ npm run dev -- web
 
 该功能面向个人、本地使用场景。Notion Integration Token、微信公众号 AppID 和 AppSecret 都只保存在本机 `.md2wechat/config.json`，不会发送到本项目之外的服务。
 
+### Demo 数据库
+
+如果还没有符合要求的 Notion 文章数据库，可以打开公开的 [Blog Posts demo](https://app.notion.com/p/3af4032f33bf8035b3d8e006714319ec?v=f794032f33bf83949c350865e3068180&source=copy_link) 查看结构，并将它复制（Duplicate）到自己的 Notion Workspace。
+
+Demo 包含工具需要的主要属性：
+
+| 属性 | 类型 | 用途 |
+|------|------|------|
+| `Title` | Title | 公众号文章标题 |
+| `type` | Select | 值为 `Post` 时作为文章展示 |
+| `Status` | Select | Draft / Published / Archived 筛选 |
+| `Published Date` | Date | 文章排序日期 |
+| `Summary` | Text | 公众号摘要 |
+| `Author` | Text | 公众号作者 |
+| `Cover` | Files | 文章封面 |
+| `Category` | Select | 类别筛选 |
+| `Tags` | Multi-select | 文章标签 |
+
+公开 Demo 当前的 Data Source ID 为：
+
+```text
+b1c4032f-33bf-8251-8229-8750b49b07af
+```
+
+> 公开链接只用于查看或复制模板，并不替代 Notion API 鉴权。复制到自己的 Workspace 后，数据库和 Data Source 会生成新的 ID；请将复制后的数据库连接到自己的 Integration，并在工具中填写新的 Data Source ID。
+
 ### 1. 创建 Notion Integration
 
 1. 打开 [Notion Integrations](https://www.notion.so/profile/integrations)。
