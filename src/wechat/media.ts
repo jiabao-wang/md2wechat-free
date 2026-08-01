@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import FormData from 'form-data';
 import * as path from 'path';
 import axios from 'axios';
-import sharp from 'sharp';
 import { WeChatClient } from './client';
 import { UploadedImage, ImageRef } from '../types';
 
@@ -53,17 +52,8 @@ export class MediaManager {
       fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    let ext = '.jpg';
-    try {
-      ext = path.extname(new URL(imageUrl).pathname) || '.jpg';
-    } catch (_) {
-      ext = '.jpg';
-    }
-    ext = ext.toLowerCase().replace(/[^.a-z0-9]/g, '');
-    if (!/^\.(jpe?g|png|gif|bmp|webp)$/.test(ext)) ext = '.jpg';
+    const ext = path.extname(imageUrl) || '.jpg';
     const tempFile = path.join(tempDir, `img_${Date.now()}${ext}`);
-    let uploadFile = tempFile;
-    let convertedFile: string | undefined;
 
     try {
       const response = await axios.get(imageUrl, { responseType: 'stream' });
@@ -75,27 +65,16 @@ export class MediaManager {
         writer.on('error', reject);
       });
 
-      const contentType = String(response.headers['content-type'] || '').toLowerCase();
-      if (ext === '.svg' || contentType.includes('image/svg+xml')) {
-        convertedFile = path.join(tempDir, `img_${Date.now()}_svg.png`);
-        await sharp(tempFile, { density: 192 }).png().toFile(convertedFile);
-        uploadFile = convertedFile;
-      }
-
-      return await this.uploadImage(uploadFile);
+      return await this.uploadImage(tempFile);
     } finally {
       if (fs.existsSync(tempFile)) {
         fs.unlinkSync(tempFile);
       }
-      if (convertedFile && fs.existsSync(convertedFile)) {
-        fs.unlinkSync(convertedFile);
-      }
     }
   }
 
-  async uploadArticleImages(images: ImageRef[], options: { strict?: boolean } = {}): Promise<Map<string, string>> {
+  async uploadArticleImages(images: ImageRef[]): Promise<Map<string, string>> {
     const urlMap = new Map<string, string>();
-    const failures: string[] = [];
 
     for (const img of images) {
       try {
@@ -113,13 +92,7 @@ export class MediaManager {
         urlMap.set(img.originalUrl, result.url);
       } catch (err: any) {
         console.warn(`Warning: Failed to upload image ${img.originalUrl}: ${err.message}`);
-        failures.push(`${img.originalUrl}: ${err.message}`);
       }
-    }
-
-    if (options.strict && failures.length > 0) {
-      const first = failures[0];
-      throw new Error(`正文图片上传失败（${failures.length} 张）：${first}`);
     }
 
     return urlMap;
@@ -167,8 +140,6 @@ export class MediaManager {
       ext = '.jpg';
     }
     const tempFile = path.join(tempDir, `thumb_${Date.now()}${ext}`);
-    let uploadFile = tempFile;
-    let convertedFile: string | undefined;
 
     try {
       const response = await axios.get(imageUrl, {
@@ -186,20 +157,10 @@ export class MediaManager {
         writer.on('error', reject);
       });
 
-      const contentType = String(response.headers['content-type'] || '').toLowerCase();
-      if (ext === '.svg' || contentType.includes('image/svg+xml')) {
-        convertedFile = path.join(tempDir, `thumb_${Date.now()}_svg.png`);
-        await sharp(tempFile, { density: 192 }).png().toFile(convertedFile);
-        uploadFile = convertedFile;
-      }
-
-      return await this.uploadThumbImage(uploadFile);
+      return await this.uploadThumbImage(tempFile);
     } finally {
       if (fs.existsSync(tempFile)) {
         fs.unlinkSync(tempFile);
-      }
-      if (convertedFile && fs.existsSync(convertedFile)) {
-        fs.unlinkSync(convertedFile);
       }
     }
   }

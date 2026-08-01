@@ -28,11 +28,6 @@ const defaultConfig: AppConfig = {
     appId: '',
     appSecret: '',
   },
-  notion: {
-    token: '',
-    dataSourceId: '3934032f-33bf-80c7-8af2-000bb2a27120',
-    databaseId: '3934032f-33bf-808b-8e6b-e292e19803b8',
-  },
   theme: 'default',
   outputDir: './output',
 };

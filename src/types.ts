@@ -3,15 +3,8 @@ export interface WeChatConfig {
   appSecret: string;
 }
 
-export interface NotionConfig {
-  token: string;
-  dataSourceId: string;
-  databaseId?: string;
-}
-
 export interface AppConfig {
   wechat: WeChatConfig;
-  notion?: NotionConfig;
   theme: string;
   outputDir: string;
 }

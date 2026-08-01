@@ -145,34 +145,6 @@ function postProcessHtml(html: string): string {
     }
   });
 
-  $('p').each((_, el) => {
-    const $p = $(el);
-    if ($p.closest('pre, li, blockquote, table').length > 0) return;
-    let innerHtml = $p.html() || '';
-    innerHtml = innerHtml.replace(/^(\s*<br\s*\/?>\s*)+/i, '');
-    innerHtml = innerHtml.replace(/(\s*<br\s*\/?>\s*)+$/i, '');
-    innerHtml = innerHtml.replace(/(\s*<br\s*\/?>\s*){2,}/gi, '<br>');
-    $p.html(innerHtml);
-    const text = $p.text().trim();
-    const hasMedia = $p.find('img, video, audio, iframe').length > 0;
-    if (text === '' && !hasMedia) {
-      $p.remove();
-    }
-  });
-
-  $('blockquote p').each((_, el) => {
-    const $p = $(el);
-    let innerHtml = $p.html() || '';
-    innerHtml = innerHtml.replace(/^(\s*<br\s*\/?>\s*)+/i, '');
-    innerHtml = innerHtml.replace(/(\s*<br\s*\/?>\s*)+$/i, '');
-    innerHtml = innerHtml.replace(/(\s*<br\s*\/?>\s*){2,}/gi, '<br>');
-    $p.html(innerHtml);
-    const text = $p.text().trim();
-    if (text === '' && $p.find('img').length === 0) {
-      $p.remove();
-    }
-  });
-
   $('script, style, iframe, form, input, button').remove();
   $('*').each((_, el) => {
     const attribs = (el as any).attribs || {};
