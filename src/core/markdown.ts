@@ -88,7 +88,8 @@ export function parseMarkdown(content: string, baseDir: string = process.cwd()):
     theme: data.theme,
   };
 
-  const htmlContent = marked.parse(markdownContent) as string;
+  const cleanedContent = collapseBlankLines(normalizeInlineEmphasis(markdownContent));
+  const htmlContent = marked.parse(cleanedContent) as string;
   const images = extractImages(htmlContent, baseDir);
 
   return {
@@ -97,6 +98,52 @@ export function parseMarkdown(content: string, baseDir: string = process.cwd()):
     images,
     firstImage: images.length > 0 ? images[0] : undefined,
   };
+}
+
+function normalizeInlineEmphasis(markdown: string): string {
+  if (!markdown.includes('**')) return markdown;
+  return markdown
+    // Notion bold fragments may include trailing whitespace. Markdown requires the
+    // closing delimiter to touch the final non-space character.
+    .replace(/\*\*([^*\n]*?\S)[\t ]+\*\*/g, '**$1** ')
+    // CommonMark does not close emphasis when it is immediately followed by CJK or
+    // an alphanumeric character. Preserve the intended label/value separation.
+    .replace(/\*\*([^*\n]+)\*\*(?=[^\s\p{P}\p{S}])/gu, '**$1** ');
+}
+
+function collapseBlankLines(markdown: string): string {
+  const lines = markdown.split('\n');
+  const result: string[] = [];
+  let inCodeBlock = false;
+  let consecutiveBlank = 0;
+
+  for (const line of lines) {
+    const isBlank = line.trim() === '';
+
+    if (line.trim().startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      consecutiveBlank = 0;
+      continue;
+    }
+
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    if (isBlank) {
+      consecutiveBlank++;
+      if (consecutiveBlank <= 1) {
+        result.push(line);
+      }
+    } else {
+      consecutiveBlank = 0;
+      result.push(line);
+    }
+  }
+
+  return result.join('\n');
 }
 
 function extractFirstHeading(markdown: string): string {
