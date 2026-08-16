@@ -225,5 +225,30 @@ function isBlockedLink(href: string): boolean {
 }
 
 export function prepareForWeChat(html: string): string {
-  return sanitizeForWeChat(html);
+  const sanitized = sanitizeForWeChat(html);
+  const $ = cheerio.load(`<div id="wc-draft">${sanitized}</div>`);
+
+  // The official-account editor applies its own default spacing to <p> even
+  // when the browser preview looks correct. Sections are stable in draft HTML,
+  // so convert paragraphs only on the final upload path and explicitly remove
+  // spacing that WeChat could otherwise expand into blank-looking lines.
+  $('p').each((_, el) => {
+    const $paragraph = $(el);
+    const $section = $('<section></section>');
+    const attributes = (el as any).attribs || {};
+    for (const [name, value] of Object.entries(attributes)) {
+      if (name !== 'style') $section.attr(name, String(value));
+    }
+
+    const style = String(attributes.style || '')
+      .replace(/(?:^|;)\s*margin(?:-(?:top|right|bottom|left))?\s*:\s*[^;]*/gi, '')
+      .replace(/(?:^|;)\s*padding(?:-(?:top|right|bottom|left))?\s*:\s*[^;]*/gi, '')
+      .replace(/^;+|;+$/g, '');
+    $section.attr('style', `${style}${style ? ';' : ''}display:block;margin:0;padding:0;`);
+    $section.html($paragraph.html() || '');
+    $paragraph.replaceWith($section);
+  });
+
+  $('#wc-draft > br').remove();
+  return $('#wc-draft').html() || sanitized;
 }
