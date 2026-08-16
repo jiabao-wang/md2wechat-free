@@ -98,6 +98,15 @@ const CODE_BREAK_STYLE = 'white-space:pre-wrap;word-wrap:break-word;overflow-wra
 function postProcessHtml(html: string): string {
   const $ = cheerio.load(`<div id="wc-post">${html}</div>`);
 
+  // Whitespace-only nodes are harmless in a browser, but the WeChat editor can
+  // turn them (and standalone BR nodes) into visible empty lines when pasting.
+  $('#wc-post').contents().each((_, node) => {
+    if (node.type === 'text' && !String((node as any).data || '').trim()) {
+      $(node).remove();
+    }
+  });
+  $('#wc-post > br').remove();
+
   $('pre').each((_, el) => {
     const $pre = $(el);
     let style = $pre.attr('style') || '';
@@ -158,6 +167,14 @@ function postProcessHtml(html: string): string {
     if (text === '' && !hasMedia) {
       $p.remove();
     }
+  });
+
+  // Avoid doubled vertical whitespace after CSS is inlined. Unlike normal web
+  // layout, the WeChat editor does not consistently collapse adjacent margins.
+  $('p + p').each((_, el) => {
+    const $p = $(el);
+    const style = $p.attr('style') || '';
+    $p.attr('style', `${style.replace(/margin-top\s*:\s*[^;]+;?/gi, '')}margin-top:0;`);
   });
 
   $('blockquote p').each((_, el) => {

@@ -210,9 +210,11 @@ export class NotionClient {
     const parts: string[] = [];
     for (const block of blocks) {
       const md = await this.blockToMarkdown(block, unsupported, depth);
-      parts.push(md);
+      // Empty Notion paragraph blocks are layout placeholders. Do not carry
+      // them into Markdown, where they can become extra lines in WeChat.
+      if (md.trim()) parts.push(md.replace(/\s+$/, ''));
     }
-    return parts.filter(Boolean).join('\n\n');
+    return parts.join('\n\n');
   }
 
   async getArticle(pageId: string): Promise<NotionArticle> {
