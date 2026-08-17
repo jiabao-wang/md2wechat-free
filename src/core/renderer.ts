@@ -228,6 +228,10 @@ export function prepareForWeChat(html: string): string {
   const sanitized = sanitizeForWeChat(html);
   const $ = cheerio.load(`<div id="wc-draft">${sanitized}</div>`);
 
+  const removeStyleProperty = (style: string, property: 'margin' | 'padding'): string => style
+    .replace(new RegExp(`(?:^|;)\\s*${property}(?:-(?:top|right|bottom|left))?\\s*:\\s*[^;]*`, 'gi'), '')
+    .replace(/^;+|;+$/g, '');
+
   // The official-account editor applies its own default spacing to <p> even
   // when the browser preview looks correct. Sections are stable in draft HTML,
   // so convert paragraphs only on the final upload path and explicitly remove
@@ -240,15 +244,49 @@ export function prepareForWeChat(html: string): string {
       if (name !== 'style') $section.attr(name, String(value));
     }
 
-    const style = String(attributes.style || '')
-      .replace(/(?:^|;)\s*margin(?:-(?:top|right|bottom|left))?\s*:\s*[^;]*/gi, '')
-      .replace(/(?:^|;)\s*padding(?:-(?:top|right|bottom|left))?\s*:\s*[^;]*/gi, '')
-      .replace(/^;+|;+$/g, '');
+    const style = removeStyleProperty(
+      removeStyleProperty(String(attributes.style || ''), 'margin'),
+      'padding',
+    );
     $section.attr('style', `${style}${style ? ';' : ''}display:block;margin:0;padding:0;`);
     $section.html($paragraph.html() || '');
     $paragraph.replaceWith($section);
   });
 
-  $('#wc-draft > br').remove();
+  // Remove every visual line break outside code. A zero-width separator keeps
+  // the two text runs distinct without creating another visible gap.
+  $('br').each((_, el) => {
+    const $br = $(el);
+    if ($br.closest('pre, code').length === 0) $br.replaceWith('\u200b');
+  });
+
+  $('#wc-draft, #wc-draft *').contents().each((_, node) => {
+    if (node.type !== 'text' || String((node as any).data || '').trim()) return;
+    const $node = $(node);
+    if ($node.parent().closest('pre, code').length === 0) $node.remove();
+  });
+
+  // Delete empty layout containers from the inside out. Notion and the WeChat
+  // editor can both emit nested empty sections, so a top-level-only pass is not
+  // sufficient on mobile.
+  $('section, p, div').toArray().reverse().forEach(el => {
+    const $el = $(el);
+    if ($el.is('#wc-draft') || $el.closest('pre, code').length > 0) return;
+    const hasContent = $el.text().trim() !== ''
+      || $el.find('img, video, audio, hr, table, pre, ul, ol').length > 0;
+    if (!hasContent) $el.remove();
+  });
+
+  // WeChat may override or expand block margins after a draft is stored. Make
+  // the uploaded HTML unambiguous: content blocks have no vertical margin and
+  // explicit HR elements are the only visual separators.
+  $('section, h1, h2, h3, h4, h5, h6, blockquote, pre, ul, ol, table, hr, img').each((_, el) => {
+    const $el = $(el);
+    if ($el.closest('pre code').length > 0) return;
+    const style = removeStyleProperty($el.attr('style') || '', 'margin');
+    const margin = $el.is('img') ? 'margin:0 auto;' : 'margin:0;';
+    $el.attr('style', `${style}${style ? ';' : ''}${margin}`);
+  });
+
   return $('#wc-draft').html() || sanitized;
 }
