@@ -303,6 +303,9 @@ export function prepareForWeChat(html: string): string {
   // elements after a draft is stored. Keep their fully inlined appearance but
   // submit them as neutral sections so mobile rendering cannot add that gap.
   $('h1, h2, h3, h4, h5, h6, blockquote').each((_, el) => {
+    const $el = $(el);
+    const style = removeStyleProperty($el.attr('style') || '', 'margin');
+    $el.attr('style', `${style}${style ? ';' : ''}margin:0 0 8px;`);
     (el as any).tagName = 'section';
     (el as any).name = 'section';
   });
@@ -315,8 +318,8 @@ export function prepareForWeChat(html: string): string {
     for (const [name, value] of Object.entries((el as any).attribs || {})) {
       $divider.attr(name, String(value));
     }
-    const style = $divider.attr('style') || '';
-    $divider.attr('style', `${style}${style && !style.endsWith(';') ? ';' : ''}display:block;font-size:0;line-height:0;`);
+    const style = removeStyleProperty($divider.attr('style') || '', 'margin');
+    $divider.attr('style', `${style}${style ? ';' : ''}display:block;font-size:0;line-height:0;margin:10px 0;`);
     $hr.replaceWith($divider);
   });
 
@@ -325,8 +328,8 @@ export function prepareForWeChat(html: string): string {
   $('section > img:only-child').each((_, el) => {
     const $img = $(el);
     const $container = $img.parent();
-    const style = $container.attr('style') || '';
-    $container.attr('style', `${style}${style && !style.endsWith(';') ? ';' : ''}font-size:0;line-height:0;`);
+    const style = removeStyleProperty($container.attr('style') || '', 'margin');
+    $container.attr('style', `${style}${style ? ';' : ''}font-size:0;line-height:0;margin:8px 0;`);
     const imageStyle = $img.attr('style') || '';
     $img.attr('style', `${imageStyle}${imageStyle && !imageStyle.endsWith(';') ? ';' : ''}vertical-align:top;`);
   });
