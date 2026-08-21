@@ -331,5 +331,9 @@ export function prepareForWeChat(html: string): string {
     $img.attr('style', `${imageStyle}${imageStyle && !imageStyle.endsWith(';') ? ';' : ''}vertical-align:top;`);
   });
 
-  return $('#wc-draft').html() || sanitized;
+  const body = $('#wc-draft').html() || sanitized;
+  // Submit one root node, as Mars-Editor does for clipboard HTML. When several
+  // semantic-looking blocks are sent as top-level siblings, WeChat may import
+  // each one as an editor paragraph and insert a spacer between them.
+  return `<section style="display:block;margin:0;padding:0;">${body}</section>`;
 }
