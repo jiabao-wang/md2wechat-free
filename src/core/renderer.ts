@@ -261,9 +261,17 @@ export function prepareForWeChat(html: string): string {
   });
 
   $('#wc-draft, #wc-draft *').contents().each((_, node) => {
-    if (node.type !== 'text' || String((node as any).data || '').trim()) return;
+    if (node.type !== 'text') return;
     const $node = $(node);
-    if ($node.parent().closest('pre, code').length === 0) $node.remove();
+    if ($node.parent().closest('pre, code').length > 0) return;
+    const value = String((node as any).data || '');
+    if (!value.trim()) {
+      $node.remove();
+      return;
+    }
+    // Browser clipboard paste collapses these source newlines automatically,
+    // but the Draft API can preserve them. Remove them before JSON submission.
+    (node as any).data = value.replace(/\s*[\r\n]+\s*/g, '\u200b');
   });
 
   // Delete empty layout containers from the inside out. Notion and the WeChat
