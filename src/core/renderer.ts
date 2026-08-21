@@ -253,11 +253,14 @@ export function prepareForWeChat(html: string): string {
     $paragraph.replaceWith($section);
   });
 
-  // Remove every visual line break outside code. A zero-width separator keeps
-  // the two text runs distinct without creating another visible gap.
+  // Keep exactly one clean BR for each Markdown line break. Marked also emits
+  // a raw newline next to this element; the text-node pass below removes it so
+  // the Draft API cannot interpret one source break as two visual lines.
   $('br').each((_, el) => {
     const $br = $(el);
-    if ($br.closest('pre, code').length === 0) $br.replaceWith('\u200b');
+    if ($br.closest('pre, code').length === 0) {
+      for (const name of Object.keys((el as any).attribs || {})) $br.removeAttr(name);
+    }
   });
 
   $('#wc-draft, #wc-draft *').contents().each((_, node) => {
@@ -269,9 +272,9 @@ export function prepareForWeChat(html: string): string {
       $node.remove();
       return;
     }
-    // Browser clipboard paste collapses these source newlines automatically,
-    // but the Draft API can preserve them. Remove them before JSON submission.
-    (node as any).data = value.replace(/\s*[\r\n]+\s*/g, '\u200b');
+    // The BR already represents this source newline. Browser paste collapses
+    // the raw character, but the Draft API may preserve it as a second line.
+    (node as any).data = value.replace(/\s*[\r\n]+\s*/g, '');
   });
 
   // Delete empty layout containers from the inside out. Notion and the WeChat

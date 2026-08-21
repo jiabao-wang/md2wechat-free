@@ -71,10 +71,9 @@ renderer.code = function(code: string, lang: string | undefined, _isEscaped: boo
 };
 
 marked.setOptions({
-  // Match the WeChat-tested behavior used by Mars-Editor: a single source
-  // newline is a soft wrap, not a visual <br>. Paragraphs still require a
-  // blank line, while explicit separators remain available through `---`.
-  breaks: false,
+  // Preserve the author's visual line breaks. The final Draft-API cleanup
+  // removes Marked's adjacent raw newline, leaving exactly one clean <br>.
+  breaks: true,
   gfm: true,
   renderer: renderer,
 } as any);
