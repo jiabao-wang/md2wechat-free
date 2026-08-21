@@ -253,17 +253,28 @@ export function prepareForWeChat(html: string): string {
     $paragraph.replaceWith($section);
   });
 
-  // Remove every visual line break outside code. A zero-width separator keeps
-  // the two text runs distinct without creating another visible gap.
+  // Keep exactly one clean BR for each Markdown line break. Marked also emits
+  // a raw newline next to this element; the text-node pass below removes it so
+  // the Draft API cannot interpret one source break as two visual lines.
   $('br').each((_, el) => {
     const $br = $(el);
-    if ($br.closest('pre, code').length === 0) $br.replaceWith('\u200b');
+    if ($br.closest('pre, code').length === 0) {
+      for (const name of Object.keys((el as any).attribs || {})) $br.removeAttr(name);
+    }
   });
 
   $('#wc-draft, #wc-draft *').contents().each((_, node) => {
-    if (node.type !== 'text' || String((node as any).data || '').trim()) return;
+    if (node.type !== 'text') return;
     const $node = $(node);
-    if ($node.parent().closest('pre, code').length === 0) $node.remove();
+    if ($node.parent().closest('pre, code').length > 0) return;
+    const value = String((node as any).data || '');
+    if (!value.trim()) {
+      $node.remove();
+      return;
+    }
+    // The BR already represents this source newline. Browser paste collapses
+    // the raw character, but the Draft API may preserve it as a second line.
+    (node as any).data = value.replace(/\s*[\r\n]+\s*/g, '');
   });
 
   // Delete empty layout containers from the inside out. Notion and the WeChat
@@ -286,6 +297,38 @@ export function prepareForWeChat(html: string): string {
     const style = removeStyleProperty($el.attr('style') || '', 'margin');
     const margin = $el.is('img') ? 'margin:0 auto;' : 'margin:0;';
     $el.attr('style', `${style}${style ? ';' : ''}${margin}`);
+  });
+
+  // WeChat assigns its own paragraph spacing to semantic heading and quote
+  // elements after a draft is stored. Keep their fully inlined appearance but
+  // submit them as neutral sections so mobile rendering cannot add that gap.
+  $('h1, h2, h3, h4, h5, h6, blockquote').each((_, el) => {
+    (el as any).tagName = 'section';
+    (el as any).name = 'section';
+  });
+
+  // A void HR can also be wrapped as a standalone paragraph by WeChat. A
+  // zero-width character keeps the styled section alive without adding height.
+  $('hr').each((_, el) => {
+    const $hr = $(el);
+    const $divider = $('<section>\u200b</section>');
+    for (const [name, value] of Object.entries((el as any).attribs || {})) {
+      $divider.attr(name, String(value));
+    }
+    const style = $divider.attr('style') || '';
+    $divider.attr('style', `${style}${style && !style.endsWith(';') ? ';' : ''}display:block;font-size:0;line-height:0;`);
+    $hr.replaceWith($divider);
+  });
+
+  // Standalone images otherwise participate in the parent's inherited text
+  // line box, which shows up as blank space above or below the image on mobile.
+  $('section > img:only-child').each((_, el) => {
+    const $img = $(el);
+    const $container = $img.parent();
+    const style = $container.attr('style') || '';
+    $container.attr('style', `${style}${style && !style.endsWith(';') ? ';' : ''}font-size:0;line-height:0;`);
+    const imageStyle = $img.attr('style') || '';
+    $img.attr('style', `${imageStyle}${imageStyle && !imageStyle.endsWith(';') ? ';' : ''}vertical-align:top;`);
   });
 
   return $('#wc-draft').html() || sanitized;

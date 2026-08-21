@@ -53,7 +53,10 @@ function wrapCodeLines(highlightedHtml: string): string {
     let line = lines[i];
     if (i === lines.length - 1 && line.trim() === '') continue;
     if (line === '') {
-      wrappedLines.push('<section style="display:block;line-height:1.6;min-height:1em;"><br></section>');
+      // Mars-Editor uses one block element per code line because WeChat can
+      // split raw newlines inside <pre>. Keep an empty code line with nbsp,
+      // never with <br>, so the draft HTML has no line-break tags at all.
+      wrappedLines.push('<section style="display:block;line-height:1.6;min-height:1em;">&nbsp;</section>');
     } else {
       wrappedLines.push(`<section style="display:block;line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;">${line}</section>`);
     }
@@ -68,6 +71,8 @@ renderer.code = function(code: string, lang: string | undefined, _isEscaped: boo
 };
 
 marked.setOptions({
+  // Preserve the author's visual line breaks. The final Draft-API cleanup
+  // removes Marked's adjacent raw newline, leaving exactly one clean <br>.
   breaks: true,
   gfm: true,
   renderer: renderer,
