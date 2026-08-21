@@ -299,5 +299,37 @@ export function prepareForWeChat(html: string): string {
     $el.attr('style', `${style}${style ? ';' : ''}${margin}`);
   });
 
+  // WeChat assigns its own paragraph spacing to semantic heading and quote
+  // elements after a draft is stored. Keep their fully inlined appearance but
+  // submit them as neutral sections so mobile rendering cannot add that gap.
+  $('h1, h2, h3, h4, h5, h6, blockquote').each((_, el) => {
+    (el as any).tagName = 'section';
+    (el as any).name = 'section';
+  });
+
+  // A void HR can also be wrapped as a standalone paragraph by WeChat. A
+  // zero-width character keeps the styled section alive without adding height.
+  $('hr').each((_, el) => {
+    const $hr = $(el);
+    const $divider = $('<section>\u200b</section>');
+    for (const [name, value] of Object.entries((el as any).attribs || {})) {
+      $divider.attr(name, String(value));
+    }
+    const style = $divider.attr('style') || '';
+    $divider.attr('style', `${style}${style && !style.endsWith(';') ? ';' : ''}display:block;font-size:0;line-height:0;`);
+    $hr.replaceWith($divider);
+  });
+
+  // Standalone images otherwise participate in the parent's inherited text
+  // line box, which shows up as blank space above or below the image on mobile.
+  $('section > img:only-child').each((_, el) => {
+    const $img = $(el);
+    const $container = $img.parent();
+    const style = $container.attr('style') || '';
+    $container.attr('style', `${style}${style && !style.endsWith(';') ? ';' : ''}font-size:0;line-height:0;`);
+    const imageStyle = $img.attr('style') || '';
+    $img.attr('style', `${imageStyle}${imageStyle && !imageStyle.endsWith(';') ? ';' : ''}vertical-align:top;`);
+  });
+
   return $('#wc-draft').html() || sanitized;
 }
